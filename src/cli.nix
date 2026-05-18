@@ -9,7 +9,20 @@ writeShellApplication {
   text = ''
     SOCKET=''${NFSM_SOCKET:-/run/user/1000/nfsm.sock}
     trap 'notify-send --icon="${./assets/icon.png}" --app-name="NFSM" "Niri FullScreen Manager" "Failed to connect to NFSM_SOCKET: $SOCKET" && niri msg action fullscreen-window' ERR
-    echo 'FullscreenRequest' | socat - UNIX-CONNECT:"$SOCKET"
+
+    CMD=''${1:-fullscreen}
+    case "$CMD" in
+      fullscreen)
+        echo 'FullscreenRequest' | socat - UNIX-CONNECT:"$SOCKET"
+        ;;
+      maximize)
+        echo 'MaximizeRequest' | socat - UNIX-CONNECT:"$SOCKET"
+        ;;
+      *)
+        echo "Unknown command: $CMD" >&2
+        exit 1
+        ;;
+    esac
   '';
 
   meta = {

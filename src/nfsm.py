@@ -11,6 +11,8 @@ import threading
 window_positions = {}
 # dict that tracks fullscreen windows and their restore positions { window_id -> { position: (col, row), exit: Bool } }
 fullscreen_windows = {}
+# dict that tracks maximized windows and their restore positions { window_id -> { position: (col, row), exit: Bool } }
+maximize_windows = {}
 
 def main():
     t1 = threading.Thread(target=nfsm_stream)
@@ -27,6 +29,36 @@ def run_fullscreen_cmd(window_id):
     subprocess.run(
         ["niri", "msg", "action", "fullscreen-window", "--id", str(window_id)]
     )
+
+def run_maximize_cmd(window_id):
+    subprocess.run(
+        ["niri", "msg", "action", "maximize-window-to-edges", "--id", str(window_id)]
+    )
+
+def handle_maximize_request():
+    # get focused window
+    props = subprocess.run(
+        ["niri", "msg", "--json", "focused-window"],
+        capture_output=True,
+        text=True,
+    )
+    window_id = json.loads(props.stdout)["id"]
+
+    # the window is exiting maximize
+    if window_id in maximize_windows:
+        maximize_windows[window_id]["exit"] = True
+        # trigger a niri window layouts changed event
+        run_maximize_cmd(window_id)
+        return
+
+    # the window is entering maximize
+    if window_id in window_positions:
+        col, row = window_positions[window_id]
+        maximize_windows[window_id] = {
+            "position": (col, row),
+            "exit": False
+        }
+        run_maximize_cmd(window_id)
 
 def handle_fullscreen_request():
     # get focused window
@@ -84,6 +116,8 @@ def nfsm_socket():
                 cmd = data.decode('utf-8').strip()
                 if cmd == "FullscreenRequest":
                     handle_fullscreen_request()
+                elif cmd == "MaximizeRequest":
+                    handle_maximize_request()
         except socket.error as e:
             print(f"Socket error: {e}")
         finally:
@@ -95,6 +129,8 @@ def handle_window_closed(window_id):
         del window_positions[window_id]
     if window_id in fullscreen_windows:
         del fullscreen_windows[window_id]
+    if window_id in maximize_windows:
+        del maximize_windows[window_id]
 
 def niri_cmd(command):
     subprocess.run(["niri", "msg", "action", command])
@@ -171,6 +207,17 @@ def nfsm_stream():
                         niri_cmd("move-window-up")
                 # window is already back at its last recorded position
                 del fullscreen_windows[window_id]
+
+            if window_id in maximize_windows and maximize_windows[window_id]["exit"]:
+                dest_col, dest_row = maximize_windows[window_id]["position"]
+                if dest_col < col:
+                    niri_cmd("consume-or-expel-window-left")
+                    continue
+                if dest_row != row:
+                    for _ in range(row - dest_row):
+                        niri_cmd("move-window-up")
+                # window is already back at its last recorded position
+                del maximize_windows[window_id]
 
             window_positions[window_id] = (col, row)
 
