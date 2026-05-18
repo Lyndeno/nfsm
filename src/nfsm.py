@@ -223,5 +223,9 @@ def nfsm_stream():
 
             sys.stdout.flush()
 
+    proc.wait()
+    if proc.returncode != 0:
+        os._exit(1)
+
 if __name__ == "__main__":
     main()
